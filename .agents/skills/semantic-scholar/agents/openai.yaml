@@ -1,0 +1,4 @@
+interface:
+  display_name: "Semantic Scholar"
+  short_description: "Guide Semantic Scholar CLI research workflows"
+  default_prompt: "Use $semantic-scholar to choose the right Semantic Scholar CLI command for literature search and citation lookup."

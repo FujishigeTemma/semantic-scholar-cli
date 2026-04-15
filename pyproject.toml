@@ -1,0 +1,18 @@
+[project]
+name = "semantic-scholar-cli"
+version = "0.1.0"
+description = "CLI-first Semantic Scholar tooling for LLM workflows"
+authors = [{ name = "FUJISHIGE TEMMA", email = "tenma.x0@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.28.1", "pydantic>=2.11.0", "typer>=0.16.0"]
+
+[project.scripts]
+semantic-scholar = "semantic_scholar_cli.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=8.4.0", "respx>=0.22.0"]
