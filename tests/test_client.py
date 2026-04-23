@@ -38,7 +38,7 @@ def test_search_papers_serializes_repeatable_fields(
     assert "openAccessPdf" in request.url.params
 
 
-def test_get_citation_extracts_requested_format(
+def test_get_citation_returns_bibtex(
     mocked_api,
     api_base_url: str,
     sample_paper: dict,
@@ -48,31 +48,34 @@ def test_get_citation_extracts_requested_format(
     )
     client = SemanticScholarClient(base_url=api_base_url)
 
-    response = client.get_citation(CitationGetInput(paper_id="paper-123", format="apa"))
+    response = client.get_citation(CitationGetInput(paper_id="paper-123"))
 
-    assert response["format"] == "apa"
-    assert "Vaswani" in response["citation"]
-    assert response["availableFormats"] == ["apa", "bibtex"]
+    assert response["format"] == "bibtex"
+    assert response["citation"] == "@article{attention2017,...}"
+    assert "availableFormats" not in response
 
 
-def test_get_citation_raises_if_format_missing(
+def test_get_citation_raises_when_styles_empty(
     mocked_api,
     api_base_url: str,
     sample_paper: dict,
 ) -> None:
-    sample_paper["citationStyles"] = {"bibtex": "@article{attention2017,...}"}
+    sample_paper["citationStyles"] = {}
     mocked_api.get(f"{api_base_url}/paper/paper-123").mock(
         return_value=json_response(sample_paper)
     )
     client = SemanticScholarClient(base_url=api_base_url)
 
     with pytest.raises(SemanticScholarError) as exc_info:
-        client.get_citation(CitationGetInput(paper_id="paper-123", format="mla"))
+        client.get_citation(CitationGetInput(paper_id="paper-123"))
 
-    assert exc_info.value.code == "upstream_error"
+    assert exc_info.value.code == "no_citation_data"
+    assert "hint" in (exc_info.value.details or {})
 
 
-def test_404_maps_to_not_found(mocked_api, api_base_url: str) -> None:
+def test_404_on_paper_includes_paper_id_format_hint(
+    mocked_api, api_base_url: str
+) -> None:
     mocked_api.get(f"{api_base_url}/paper/missing").mock(
         return_value=httpx.Response(404, json={"message": "missing"})
     )
@@ -83,6 +86,74 @@ def test_404_maps_to_not_found(mocked_api, api_base_url: str) -> None:
 
     assert exc_info.value.code == "not_found"
     assert exc_info.value.exit_code == 4
+    hint = (exc_info.value.details or {}).get("hint", "")
+    assert "DOI:" in hint and "ARXIV:" in hint
+
+
+def test_404_on_author_includes_author_id_hint(mocked_api, api_base_url: str) -> None:
+    mocked_api.get(f"{api_base_url}/author/missing").mock(
+        return_value=httpx.Response(404, json={"message": "missing"})
+    )
+    client = SemanticScholarClient(base_url=api_base_url)
+
+    with pytest.raises(SemanticScholarError) as exc_info:
+        client._request_json("author/missing")
+
+    hint = (exc_info.value.details or {}).get("hint", "")
+    assert "numeric" in hint
+
+
+def test_401_maps_to_auth_error_with_api_key_hint(
+    mocked_api, api_base_url: str
+) -> None:
+    mocked_api.get(f"{api_base_url}/paper/search").mock(
+        return_value=httpx.Response(401, json={"message": "unauthorized"})
+    )
+    client = SemanticScholarClient(base_url=api_base_url)
+
+    with pytest.raises(SemanticScholarError) as exc_info:
+        client.search_papers(PaperSearchInput(query="test"))
+
+    assert exc_info.value.code == "auth_error"
+    assert "SEMANTIC_SCHOLAR_API_KEY" in (exc_info.value.details or {}).get("hint", "")
+
+
+def test_429_without_key_hints_to_set_api_key(mocked_api, api_base_url: str) -> None:
+    mocked_api.get(f"{api_base_url}/paper/search").mock(
+        return_value=httpx.Response(429, json={"message": "slow down"})
+    )
+    client = SemanticScholarClient(base_url=api_base_url)
+
+    with pytest.raises(SemanticScholarError) as exc_info:
+        client.search_papers(PaperSearchInput(query="test"))
+
+    assert exc_info.value.code == "rate_limited"
+    assert "SEMANTIC_SCHOLAR_API_KEY" in (exc_info.value.details or {}).get("hint", "")
+
+
+def test_429_with_key_hints_to_reduce_rate(mocked_api, api_base_url: str) -> None:
+    mocked_api.get(f"{api_base_url}/paper/search").mock(
+        return_value=httpx.Response(429, json={"message": "slow down"})
+    )
+    client = SemanticScholarClient(base_url=api_base_url, api_key="some-key")
+
+    with pytest.raises(SemanticScholarError) as exc_info:
+        client.search_papers(PaperSearchInput(query="test"))
+
+    assert "Reduce" in (exc_info.value.details or {}).get("hint", "")
+
+
+def test_400_maps_to_bad_request_with_help_hint(mocked_api, api_base_url: str) -> None:
+    mocked_api.get(f"{api_base_url}/paper/search").mock(
+        return_value=httpx.Response(400, json={"message": "bad year"})
+    )
+    client = SemanticScholarClient(base_url=api_base_url)
+
+    with pytest.raises(SemanticScholarError) as exc_info:
+        client.search_papers(PaperSearchInput(query="test"))
+
+    assert exc_info.value.code == "bad_request"
+    assert "--help" in (exc_info.value.details or {}).get("hint", "")
 
 
 def test_invalid_json_maps_to_upstream_error(mocked_api, api_base_url: str) -> None:

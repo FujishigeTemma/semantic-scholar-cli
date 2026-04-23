@@ -114,12 +114,11 @@ uvx --from git+https://github.com/FujishigeTemma/semantic-scholar-cli semantic-s
   --field authors
 ```
 
-Export a citation:
+Export a citation (BibTeX is the only format Semantic Scholar's Graph API exposes):
 
 ```bash
 uvx --from git+https://github.com/FujishigeTemma/semantic-scholar-cli semantic-scholar citation get \
-  --paper-id "ARXIV:1706.03762" \
-  --format bibtex
+  --paper-id "ARXIV:1706.03762"
 ```
 
 Inspect model-facing tool guidance:

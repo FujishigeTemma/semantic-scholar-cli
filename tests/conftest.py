@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 import respx
 from httpx import Response
@@ -13,7 +15,7 @@ def api_base_url() -> str:
 
 
 @pytest.fixture
-def mocked_api() -> respx.MockRouter:
+def mocked_api() -> Iterator[respx.MockRouter]:
     with respx.mock(assert_all_called=False) as router:
         yield router
 
@@ -32,10 +34,7 @@ def sample_paper() -> dict:
         "fieldsOfStudy": ["Computer Science"],
         "publicationDate": "2017-06-12",
         "openAccessPdf": {"url": "https://example.test/paper.pdf"},
-        "citationStyles": {
-            "bibtex": "@article{attention2017,...}",
-            "apa": "Vaswani et al. (2017). Attention Is All You Need.",
-        },
+        "citationStyles": {"bibtex": "@article{attention2017,...}"},
     }
 
 

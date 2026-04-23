@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -82,15 +81,6 @@ def _csv(values: list[str] | tuple[str, ...] | None) -> str | None:
     if not values:
         return None
     return ",".join(values)
-
-
-class CitationFormat(StrEnum):
-    """Supported citation formats."""
-
-    bibtex = "bibtex"
-    apa = "apa"
-    mla = "mla"
-    chicago = "chicago"
 
 
 class RequestModel(BaseModel):
@@ -252,7 +242,6 @@ class CitationGetInput(RequestModel):
     """Input for citation export."""
 
     paper_id: str = Field(min_length=1)
-    format: CitationFormat = CitationFormat.bibtex
     include_abstract: bool = False
     fields: list[str] = Field(default_factory=lambda: list(DEFAULT_CITATION_FIELDS))
 

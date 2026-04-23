@@ -64,16 +64,16 @@ class SemanticScholarClient:
     def get_citation(self, request: CitationGetInput) -> dict[str, Any]:
         response = self._request_json(f"paper/{request.paper_id}", request.to_params())
         styles = response.get("citationStyles") or {}
-        citation = styles.get(request.format.value)
+        citation = styles.get("bibtex")
         if not citation:
             raise SemanticScholarError(
-                code="upstream_error",
-                message=f"Semantic Scholar did not return a '{request.format.value}' citation.",
+                code="no_citation_data",
+                message="Semantic Scholar has no citation data indexed for this paper.",
                 details={
                     "paper_id": request.paper_id,
-                    "available_formats": sorted(styles.keys()),
+                    "hint": "Try a different identifier (e.g. DOI:, ARXIV:) or query 'paper get' to confirm the paper is indexed.",
                 },
-                exit_code=6,
+                exit_code=4,
             )
 
         payload: dict[str, Any] = {
@@ -82,16 +82,19 @@ class SemanticScholarClient:
             "year": response.get("year"),
             "venue": response.get("venue"),
             "authors": response.get("authors"),
-            "format": request.format.value,
-            "availableFormats": sorted(styles.keys()),
+            "format": "bibtex",
             "citation": citation,
         }
         if request.include_abstract and response.get("abstract"):
             payload["abstract"] = response["abstract"]
         return payload
 
-    def _request_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        filtered_params = {key: value for key, value in (params or {}).items() if value is not None}
+    def _request_json(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        filtered_params = {
+            key: value for key, value in (params or {}).items() if value is not None
+        }
         url = f"{self.base_url}/{path.lstrip('/')}"
         headers = {"Accept": "application/json"}
         if self.api_key:
@@ -143,25 +146,57 @@ class SemanticScholarClient:
         path: str,
     ) -> SemanticScholarError:
         status_code = response.status_code
-        details = {
+        details: dict[str, Any] = {
             "path": path,
             "status_code": status_code,
             "upstream_message": self._read_error_message(response),
         }
 
         if status_code == 404:
+            details["hint"] = self._not_found_hint(path)
             return SemanticScholarError(
                 code="not_found",
                 message="Semantic Scholar resource was not found.",
                 details=details,
                 exit_code=4,
             )
+        if status_code in (401, 403):
+            details["hint"] = (
+                "Set --api-key or SEMANTIC_SCHOLAR_API_KEY. "
+                "Request a key at https://www.semanticscholar.org/product/api#api-key."
+            )
+            return SemanticScholarError(
+                code="auth_error",
+                message="Semantic Scholar API rejected the request as unauthorized.",
+                details=details,
+                exit_code=3,
+            )
         if status_code == 429:
+            if not self.api_key:
+                details["hint"] = (
+                    "Unauthenticated requests share a global rate-limit pool. "
+                    "Set --api-key or SEMANTIC_SCHOLAR_API_KEY for a dedicated allocation."
+                )
+            else:
+                details["hint"] = (
+                    "Reduce request rate; introductory keys allow ~1 req/s."
+                )
             return SemanticScholarError(
                 code="rate_limited",
                 message="Semantic Scholar API rate limit exceeded.",
                 details=details,
                 exit_code=5,
+            )
+        if 400 <= status_code < 500:
+            details["hint"] = (
+                "Inspect 'upstream_message' for the rejected parameter; "
+                "run the command with --help to review valid input shapes."
+            )
+            return SemanticScholarError(
+                code="bad_request",
+                message="Semantic Scholar API rejected the request parameters.",
+                details=details,
+                exit_code=2,
             )
 
         return SemanticScholarError(
@@ -170,6 +205,18 @@ class SemanticScholarClient:
             details=details,
             exit_code=6,
         )
+
+    @staticmethod
+    def _not_found_hint(path: str) -> str:
+        if path.startswith("paper/"):
+            return (
+                "Paper identifier must be one of: 40-char Semantic Scholar SHA-1, "
+                "CorpusId:<n>, DOI:<doi>, ARXIV:<id>, MAG:<id>, ACL:<id>, PMID:<id>, PMCID:<id>, "
+                "or URL:<url>."
+            )
+        if path.startswith("author/"):
+            return "Author identifier is the numeric Semantic Scholar author ID."
+        return "Verify the identifier exists in Semantic Scholar's index."
 
     @staticmethod
     def _read_error_message(response: httpx.Response) -> str:

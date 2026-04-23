@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, TypeVar
 
 import typer
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from .client import SemanticScholarClient
 from .contracts import (
@@ -40,7 +40,7 @@ app.add_typer(author_app, name="author")
 app.add_typer(citation_app, name="citation")
 app.add_typer(tool_app, name="tool")
 
-ModelT = TypeVar("ModelT")
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 @dataclass(slots=True)
@@ -88,7 +88,9 @@ def main_callback(
 def paper_search(
     ctx: typer.Context,
     query: str = typer.Option(..., "--query", help="Plain-text query."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
     limit: int = typer.Option(10, min=1, max=100),
     offset: int = typer.Option(0, min=0),
     year: str | None = typer.Option(None, help="Publication year or range."),
@@ -148,8 +150,12 @@ def paper_search(
 @paper_app.command("get")
 def paper_get(
     ctx: typer.Context,
-    paper_id: str = typer.Option(..., "--paper-id", help="Semantic Scholar paper identifier."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    paper_id: str = typer.Option(
+        ..., "--paper-id", help="Semantic Scholar paper identifier."
+    ),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
 ) -> None:
     """Get paper details."""
 
@@ -170,8 +176,12 @@ def paper_get(
 @paper_app.command("authors")
 def paper_authors(
     ctx: typer.Context,
-    paper_id: str = typer.Option(..., "--paper-id", help="Semantic Scholar paper identifier."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    paper_id: str = typer.Option(
+        ..., "--paper-id", help="Semantic Scholar paper identifier."
+    ),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
     limit: int = typer.Option(25, min=1, max=1000),
     offset: int = typer.Option(0, min=0),
 ) -> None:
@@ -197,8 +207,12 @@ def paper_authors(
 @paper_app.command("citations")
 def paper_citations(
     ctx: typer.Context,
-    paper_id: str = typer.Option(..., "--paper-id", help="Semantic Scholar paper identifier."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    paper_id: str = typer.Option(
+        ..., "--paper-id", help="Semantic Scholar paper identifier."
+    ),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
     limit: int = typer.Option(10, min=1, max=1000),
     offset: int = typer.Option(0, min=0),
 ) -> None:
@@ -220,8 +234,12 @@ def paper_citations(
 @paper_app.command("references")
 def paper_references(
     ctx: typer.Context,
-    paper_id: str = typer.Option(..., "--paper-id", help="Semantic Scholar paper identifier."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    paper_id: str = typer.Option(
+        ..., "--paper-id", help="Semantic Scholar paper identifier."
+    ),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
     limit: int = typer.Option(10, min=1, max=1000),
     offset: int = typer.Option(0, min=0),
 ) -> None:
@@ -244,7 +262,9 @@ def paper_references(
 def author_search(
     ctx: typer.Context,
     query: str = typer.Option(..., "--query", help="Author name query."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
     limit: int = typer.Option(10, min=1, max=100),
     offset: int = typer.Option(0, min=0),
 ) -> None:
@@ -264,8 +284,12 @@ def author_search(
 @author_app.command("get")
 def author_get(
     ctx: typer.Context,
-    author_id: str = typer.Option(..., "--author-id", help="Semantic Scholar author identifier."),
-    field: list[str] | None = typer.Option(None, "--field", help="Repeat to request extra fields."),
+    author_id: str = typer.Option(
+        ..., "--author-id", help="Semantic Scholar author identifier."
+    ),
+    field: list[str] | None = typer.Option(
+        None, "--field", help="Repeat to request extra fields."
+    ),
 ) -> None:
     """Get author details."""
 
@@ -286,22 +310,22 @@ def author_get(
 @citation_app.command("get")
 def citation_get(
     ctx: typer.Context,
-    paper_id: str = typer.Option(..., "--paper-id", help="Semantic Scholar paper identifier."),
-    format: str = typer.Option("bibtex", "--format", help="Citation format."),
+    paper_id: str = typer.Option(
+        ..., "--paper-id", help="Semantic Scholar paper identifier."
+    ),
     include_abstract: bool = typer.Option(
         False,
         "--include-abstract",
         help="Include abstract when present.",
     ),
 ) -> None:
-    """Get a formatted citation."""
+    """Get a BibTeX citation. Semantic Scholar's Graph API exposes only BibTeX."""
 
     _run_command(
         ctx,
         CitationGetInput,
         {
             "paper_id": paper_id,
-            "format": format,
             "include_abstract": include_abstract,
         },
         lambda client, request: {
@@ -457,14 +481,19 @@ def _error_payload(
 
 
 def _emit(settings: AppSettings, payload: dict[str, Any]) -> None:
-    json.dump(payload, sys.stdout, ensure_ascii=True, indent=2 if settings.pretty else None)
+    json.dump(
+        payload, sys.stdout, ensure_ascii=True, indent=2 if settings.pretty else None
+    )
     sys.stdout.write("\n")
     sys.stdout.flush()
 
 
 def _snake_case_keys(value: Any) -> Any:
     if isinstance(value, dict):
-        return {_to_snake_case(str(key)): _snake_case_keys(inner) for key, inner in value.items()}
+        return {
+            _to_snake_case(str(key)): _snake_case_keys(inner)
+            for key, inner in value.items()
+        }
     if isinstance(value, list):
         return [_snake_case_keys(item) for item in value]
     return value
